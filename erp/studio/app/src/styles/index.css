@@ -5,6 +5,56 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 @layer base {
+  :root {
+    --background: 240 10% 3.9%;
+    --foreground: 240 5% 96%;
+    --card: 240 10% 5.5%;
+    --card-foreground: 240 5% 96%;
+    --popover: 240 10% 5.5%;
+    --popover-foreground: 240 5% 96%;
+    --primary: 252 100% 71%;
+    --primary-foreground: 240 10% 3.9%;
+    --secondary: 240 5% 15%;
+    --secondary-foreground: 240 5% 96%;
+    --muted: 240 5% 15%;
+    --muted-foreground: 240 5% 55%;
+    --accent: 252 100% 71%;
+    --accent-foreground: 240 10% 3.9%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 6% 18%;
+    --input: 240 6% 18%;
+    --ring: 252 100% 71%;
+    --radius: 0.5rem;
+    --chart-1: 252 100% 71%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+
+  .light {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 252 100% 61%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 240 6% 10%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;
+    --accent: 252 100% 61%;
+    --accent-foreground: 240 6% 10%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 252 100% 61%;
+  }
+
   * {
     @apply border-border;
   }

@@ -190,6 +190,10 @@ class Runtime:
         logger.info("[8.5/12] Initializing POA monitoring...")
         await self._boot_poa_monitoring()
 
+        # Phase 8.55: Creem Onboarding Tracker (requires PULSE)
+        logger.info("[8.55/12] Registering Creem onboarding cron...")
+        await self._boot_creem_tracker()
+
         # Phase 8.6: NEXUS Evolution Daemon (requires NEXUS + PULSE)
         logger.info("[8.6/12] Starting NEXUS evolution daemon...")
         await self._boot_nexus_daemon()
@@ -951,6 +955,72 @@ class Runtime:
         
         await self.health.start(check_interval=self.config.immune.check_interval)
         logger.info("  PULSE ready (scheduler + health monitor)")
+
+    async def _boot_creem_tracker(self) -> None:
+        """Register Creem onboarding tracker as a PULSE cron job (every 8h)."""
+        try:
+            from .pulse.scheduler import JobConfig, JobType
+            tracker_path = Path("/home/adam/.creem/tracker.json")
+            if not tracker_path.exists():
+                logger.info("  Creem tracker: no tracker.json found, skipping")
+                return
+
+            config = JobConfig(
+                id="creem-onboarding-tracker",
+                name="Creem Onboarding Tracker",
+                job_type=JobType.INTERVAL,
+                interval=28800,  # 8 hours
+                emit_topic="creem.tracker.check",
+            )
+            self.scheduler.add_job(config)
+
+            @self.bus.on("creem.tracker.check")
+            async def on_creem_tracker_check(event):
+                """Check Creem onboarding progress and report blockers."""
+                import json as _json
+                try:
+                    data = _json.loads(tracker_path.read_text())
+                    blockers = []
+                    ali_blocked = []
+                    done_count = 0
+                    total_count = 0
+
+                    for phase in data.get("phases", []):
+                        for step in phase.get("steps", []):
+                            total_count += 1
+                            if step["status"] == "done":
+                                done_count += 1
+                            elif step["status"] == "blocked" and step.get("owner") == "ali":
+                                ali_blocked.append(step)
+
+                    if done_count == total_count:
+                        logger.info("Creem onboarding: all steps complete")
+                        return
+
+                    channel_id = data.get("cron", {}).get("channel", "1478716092992979035")
+                    progress = f"{done_count}/{total_count}"
+
+                    if ali_blocked:
+                        blocker_list = "\n".join(
+                            f"- **{s['id']}:** {s['task']}" for s in ali_blocked
+                        )
+                        msg = (
+                            f"<@193011943382974466> ⏳ **Creem Onboarding** — {progress} steps done\n\n"
+                            f"**Blocked on you:**\n{blocker_list}"
+                        )
+                    else:
+                        msg = f"⏳ **Creem Onboarding** — {progress} steps done. No blockers on Ali."
+
+                    await self.bus.emit("discord.send", {
+                        "channel_id": channel_id,
+                        "content": msg,
+                    })
+                except Exception as exc:
+                    logger.warning("Creem tracker check failed: %s", exc)
+
+            logger.info("  Creem onboarding tracker registered (every 8h)")
+        except Exception as exc:
+            logger.warning("Failed to register Creem tracker: %s", exc)
     
     async def _boot_poa_monitoring(self) -> None:
         """Register all active POAs as PULSE scheduler jobs."""

@@ -489,24 +489,38 @@ class Runtime:
         from .voice.chain import ProviderChain
         from .voice.proxy import CopilotProxyProvider
         from .voice.ollama import OllamaProvider
+        from .voice.ollama_cloud import OllamaCloudProvider
         
         if not self.config.csuite.enabled:
             logger.info("  CSUITE disabled in config")
             return
         
-        # Build exec-tier provider chain (lighter model for executives)
+        # Build exec-tier provider chain
         vc = self.config.voice
         exec_model = self.config.csuite.executive_model
         exec_providers = []
         
-        # Copilot proxy (primary)
+        # Ollama Cloud (primary — frontier open-weight models)
+        oc_config = getattr(vc, 'ollama_cloud', None)
+        if oc_config and getattr(oc_config, 'enabled', False):
+            oc_key = getattr(oc_config, 'api_key', None) or ""
+            if oc_key:
+                exec_cloud = OllamaCloudProvider(
+                    api_key=oc_key,
+                    model=exec_model,
+                    base_url=getattr(oc_config, 'base_url', None) or "https://ollama.com/v1",
+                )
+                exec_providers.append(exec_cloud)
+                logger.info(f"  CSUITE: Ollama Cloud primary (model: {exec_model})")
+        
+        # Copilot proxy (fallback)
         exec_proxy = CopilotProxyProvider(
             endpoint=vc.proxy.base_url,
             model=exec_model,
         )
         exec_providers.append(exec_proxy)
         
-        # Ollama fallback (local)
+        # Local Ollama (last resort)
         if vc.ollama.enabled:
             exec_ollama = OllamaProvider(
                 endpoint=vc.ollama.base_url,
@@ -957,7 +971,11 @@ class Runtime:
         logger.info("  PULSE ready (scheduler + health monitor)")
 
     async def _boot_creem_tracker(self) -> None:
-        """Register Creem onboarding tracker as a PULSE cron job (every 8h)."""
+        """Register Creem onboarding tracker as a PULSE cron job (every 8h).
+        
+        Auto-advances autonomous steps, reports blockers, nags Ali on his tasks.
+        Pauses pipeline on errors — won't push bad state forward.
+        """
         try:
             from .pulse.scheduler import JobConfig, JobType
             tracker_path = Path("/home/adam/.creem/tracker.json")
@@ -976,12 +994,14 @@ class Runtime:
 
             @self.bus.on("creem.tracker.check")
             async def on_creem_tracker_check(event):
-                """Check Creem onboarding progress and report blockers."""
+                """Check Creem onboarding progress, auto-advance, report blockers."""
                 import json as _json
+                import subprocess
                 try:
                     data = _json.loads(tracker_path.read_text())
-                    blockers = []
                     ali_blocked = []
+                    auto_actions = []
+                    errors = []
                     done_count = 0
                     total_count = 0
 
@@ -990,27 +1010,62 @@ class Runtime:
                             total_count += 1
                             if step["status"] == "done":
                                 done_count += 1
-                            elif step["status"] == "blocked" and step.get("owner") == "ali":
+                            elif step.get("owner") == "ali" and step["status"] != "done":
                                 ali_blocked.append(step)
 
+                    # ── Auto-advance: health checks on completed integrations ──
+                    # Check COMB Cloud billing routes
+                    try:
+                        result = subprocess.run(
+                            ["curl", "-sf", "-o", "/dev/null", "-w", "%{http_code}",
+                             "http://127.0.0.1:8420/api/billing/tiers"],
+                            capture_output=True, text=True, timeout=10
+                        )
+                        comb_health = result.stdout.strip() == "200"
+                        if comb_health:
+                            auto_actions.append("COMB Cloud billing: ✅ healthy")
+                        else:
+                            errors.append(f"COMB Cloud billing: ❌ HTTP {result.stdout.strip()}")
+                    except Exception as e:
+                        errors.append(f"COMB Cloud billing: ❌ {e}")
+
+                    # Check ERP billing routes
+                    try:
+                        result = subprocess.run(
+                            ["curl", "-sf", "-o", "/dev/null", "-w", "%{http_code}",
+                             "http://127.0.0.1:3100/api/billing/tiers"],
+                            capture_output=True, text=True, timeout=10
+                        )
+                        erp_health = result.stdout.strip() == "200"
+                        if erp_health:
+                            auto_actions.append("ERP billing: ✅ healthy")
+                        else:
+                            auto_actions.append(f"ERP billing: ⏳ not yet deployed (HTTP {result.stdout.strip()})")
+                    except Exception as e:
+                        auto_actions.append(f"ERP billing: ⏳ not yet deployed ({e})")
+
                     if done_count == total_count:
-                        logger.info("Creem onboarding: all steps complete")
-                        return
+                        msg = "✅ **Creem Onboarding COMPLETE** — all steps done!"
+                    else:
+                        progress = f"{done_count}/{total_count}"
+                        parts = [f"⏳ **Creem Onboarding** — {progress} steps done"]
+
+                        if errors:
+                            parts.append("\n**⚠️ PIPELINE PAUSED — Errors:**")
+                            parts.extend(f"  {e}" for e in errors)
+                            parts.append("Pipeline will not advance until errors clear.")
+
+                        if auto_actions:
+                            parts.append("\n**Health checks:**")
+                            parts.extend(f"  {a}" for a in auto_actions)
+
+                        if ali_blocked:
+                            parts.append(f"\n**Blocked on <@193011943382974466>:**")
+                            parts.extend(f"  • **{s['id']}:** {s['task']}" for s in ali_blocked)
+
+                        msg = "\n".join(parts)
 
                     channel_id = data.get("cron", {}).get("channel", "1478716092992979035")
-                    progress = f"{done_count}/{total_count}"
-
-                    if ali_blocked:
-                        blocker_list = "\n".join(
-                            f"- **{s['id']}:** {s['task']}" for s in ali_blocked
-                        )
-                        msg = (
-                            f"<@193011943382974466> ⏳ **Creem Onboarding** — {progress} steps done\n\n"
-                            f"**Blocked on you:**\n{blocker_list}"
-                        )
-                    else:
-                        msg = f"⏳ **Creem Onboarding** — {progress} steps done. No blockers on Ali."
-
                     await self.bus.emit("discord.send", {
                         "channel_id": channel_id,
                         "content": msg,
@@ -1957,9 +2012,43 @@ class Runtime:
         _ciso_dispatch_count_hour: list[float] = []  # timestamps of all dispatches this hour
         _CISO_COOLDOWN = 300  # 5 minutes between CISO dispatches for same IP
         _CISO_PROCESS_COOLDOWN = 1800  # 30 minutes between dispatches for same process
-        _CISO_MAX_PER_HOUR = 4  # max 4 CISO dispatches per hour globally
+        _CISO_MAX_PER_HOUR = 0  # DISABLED — ExfilGuard CISO auto-dispatch burned too many LLM tokens (Day 32 fix)
         # Processes that should never trigger CISO dispatch (handled by ExfilGuard whitelist)
         _CISO_SKIP_PROCESSES = {"ipfs", "tor", "i2p"}
+
+        # ── DEDUP CACHE (file-based, survives restarts) ──────────────
+        # Key = "ip:type:process", Value = timestamp of last dispatch
+        # Alerts seen & resolved within 24h are silently skipped
+        _DEDUP_FILE = Path(self.workspace) / ".singularity" / "exfil_dedup.json"
+        _DEDUP_TTL = 86400  # 24 hours
+        _DEDUP_DISCORD_TTL = 600  # 10 min dedup for Discord forwarding too
+
+        def _load_dedup() -> dict[str, float]:
+            try:
+                if _DEDUP_FILE.exists():
+                    import time as _t
+                    data = json.loads(_DEDUP_FILE.read_text())
+                    now = _t.time()
+                    # Prune expired entries on load
+                    return {k: v for k, v in data.items() if now - v < _DEDUP_TTL}
+            except Exception:
+                pass
+            return {}
+
+        def _save_dedup(cache: dict[str, float]) -> None:
+            try:
+                _DEDUP_FILE.parent.mkdir(parents=True, exist_ok=True)
+                _DEDUP_FILE.write_text(json.dumps(cache))
+            except Exception:
+                pass
+
+        def _dedup_key(payload: dict, prefix: str = "") -> str:
+            ip = payload.get("ip", "unknown")
+            atype = payload.get("type", "unknown")
+            proc = payload.get("process", "unknown").lower().strip()
+            return f"{prefix}{ip}:{atype}:{proc}"
+
+        _dedup_cache = _load_dedup()
         
         logger.info("ExfilGuard event relay started")
         
@@ -1988,10 +2077,19 @@ class Runtime:
                             severity = event.get("severity", "INFO")
                             await self.bus.emit("security.exfilguard", event)
                             
-                            # Also forward CRITICAL/HIGH to Discord #dispatch
-                            if severity in ("CRITICAL", "HIGH") and self.adapters.get("discord"):
+                            payload = event.get("payload", {})
+                            
+                            # ── DEDUP: Skip if we've seen this exact alert within TTL ──
+                            import time as _time
+                            _now = _time.time()
+                            _dk_discord = _dedup_key(payload, "discord:")
+                            _dk_ciso = _dedup_key(payload, "ciso:")
+                            _last_discord = _dedup_cache.get(_dk_discord, 0)
+                            _discord_deduped = (_now - _last_discord) < _DEDUP_DISCORD_TTL
+                            
+                            # Also forward CRITICAL/HIGH to Discord #dispatch (with dedup)
+                            if severity in ("CRITICAL", "HIGH") and self.adapters.get("discord") and not _discord_deduped:
                                 from .nerve.types import OutboundMessage
-                                payload = event.get("payload", {})
                                 msg = (
                                     f"🚨 **[{severity}] ExfilGuard Security Alert**\n"
                                     f"<@193011943382974466> <@1478409279777013862>\n"
@@ -2008,10 +2106,22 @@ class Runtime:
                                         ch_id,
                                         OutboundMessage(content=msg)
                                     )
+                                # Track Discord dedup
+                                _dedup_cache[_dk_discord] = _now
+                                _save_dedup(_dedup_cache)
+                            elif _discord_deduped and severity in ("CRITICAL", "HIGH"):
+                                logger.info(f"ExfilGuard: Discord alert deduped for {_dk_discord} (seen {int(_now - _last_discord)}s ago)")
                                 
-                                # Auto-dispatch CISO for threat investigation
-                                if self.dispatcher:
-                                    import time as _time
+                                # Auto-dispatch CISO for threat investigation (with dedup)
+                                _last_ciso = _dedup_cache.get(_dk_ciso, 0)
+                                _ciso_deduped = (_now - _last_ciso) < _DEDUP_TTL
+                                
+                                if _ciso_deduped:
+                                    logger.info(f"ExfilGuard: CISO dispatch deduped for {_dk_ciso} (resolved {int(_now - _last_ciso)}s ago, TTL {_DEDUP_TTL}s)")
+                                    event_file.unlink()
+                                    continue
+                                
+                                if severity in ("CRITICAL", "HIGH") and self.dispatcher:
                                     _alert_ip = payload.get('ip', 'unknown')
                                     _alert_process = payload.get('process', '').lower().strip()
                                     _now = _time.time()

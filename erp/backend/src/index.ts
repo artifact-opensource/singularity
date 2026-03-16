@@ -28,6 +28,7 @@ import { billRoutes } from './modules/finance/bill.routes';
 import { pipelineRoutes } from './modules/development/pipeline.routes';
 import { deploymentRoutes } from './modules/development/deployment.routes';
 import { stakeholderRoutes } from './modules/stakeholder/stakeholder.routes';
+import { subscriptionRoutes } from './modules/finance/subscription.routes';
 import { workflowRoutes } from './modules/workflow/workflow.routes';
 
 // Create Fastify instance
@@ -127,6 +128,7 @@ fastify.register(async (instance) => {
   instance.register(deploymentRoutes, { prefix: '/api/development' });
   instance.register(stakeholderRoutes, { prefix: '/api' });
   instance.register(workflowRoutes, { prefix: '/api' });
+  instance.register(subscriptionRoutes, { prefix: '/api' });
 });
 
 // Start server

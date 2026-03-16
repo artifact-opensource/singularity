@@ -433,3 +433,24 @@ model Workflow {
 
   @@map("workflows")
 }
+
+model Subscription {
+  id                  String    @id @default(uuid())
+  creemSubscriptionId String?   @unique @map("creem_subscription_id")
+  creemCustomerId     String?   @map("creem_customer_id")
+  creemProductId      String?   @map("creem_product_id")
+  tier                String    @default("starter") // starter, business, enterprise
+  status              String    @default("inactive") // active, inactive, past_due, canceled, expired, paused
+  customerEmail       String
+  customerName        String?
+  currentPeriodStart  DateTime?
+  currentPeriodEnd    DateTime?
+  canceledAt          DateTime?
+  metadata            Json?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([customerEmail])
+  @@index([status])
+  @@map("subscriptions")
+}

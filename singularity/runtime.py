@@ -1077,6 +1077,93 @@ class Runtime:
         except Exception as exc:
             logger.warning("Failed to register Creem tracker: %s", exc)
     
+    async def _boot_enterprise_snapshot(self) -> None:
+        """Register enterprise snapshot automation as a PULSE cron job (every 4h)."""
+        try:
+            from .pulse.scheduler import JobConfig, JobType
+            from .enterprise.snapshot import SNAPSHOTS_DIR
+            
+            SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+            
+            config = JobConfig(
+                id="enterprise-snapshot",
+                name="Enterprise Snapshot",
+                job_type=JobType.INTERVAL,
+                interval=14400,  # 4 hours
+                emit_topic="enterprise.snapshot.capture",
+            )
+            self.scheduler.add_job(config)
+            
+            @self.bus.on("enterprise.snapshot.capture")
+            async def on_snapshot_capture(event):
+                """Capture enterprise snapshot, report summary, prune old."""
+                from .enterprise.snapshot import (
+                    capture_snapshot,
+                    list_snapshots,
+                    prune_old_snapshots,
+                    get_trend,
+                )
+                
+                try:
+                    # Capture new snapshot
+                    snapshot = capture_snapshot({"source": "pulse-cron"})
+                    
+                    # Get recent snapshots for context
+                    recent = list_snapshots(5)
+                    
+                    # Prune old snapshots
+                    pruned = prune_old_snapshots()
+                    
+                    # Build summary message
+                    summary = snapshot.get("summary", {})
+                    health = summary.get("healthy", 0)
+                    degraded = summary.get("degraded", 0)
+                    critical = summary.get("critical", 0)
+                    total = summary.get("total_modules", 0)
+                    
+                    ports = summary.get("ports", {})
+                    ports_healthy = ports.get("healthy", 0)
+                    ports_total = ports.get("total", 0)
+                    
+                    parts = [f"📸 **Enterprise Snapshot** — {snapshot['id']}"]
+                    parts.append(f"\n**Modules:** {health}/{total} healthy")
+                    
+                    if degraded > 0:
+                        parts.append(f"  ⚠️ {degraded} degraded")
+                    if critical > 0:
+                        parts.append(f"  🔴 {critical} critical")
+                    
+                    parts.append(f"\n**Ports:** {ports_healthy}/{ports_total} responding")
+                    
+                    if pruned > 0:
+                        parts.append(f"\n🗑️ Pruned {pruned} old snapshots")
+                    
+                    # Trend analysis if we have enough snapshots
+                    if len(recent) >= 3:
+                        trend = get_trend(10)
+                        if "degradation_events" in trend and trend["degradation_events"]:
+                            parts.append(f"\n⚠️ {len(trend['degradation_events'])} degradation events detected")
+                    
+                    msg = "\n".join(parts)
+                    
+                    # Send to dispatch channel
+                    channel_id = "1478452759832563971"  # #dispatch
+                    await self.bus.emit("discord.send", {
+                        "channel_id": channel_id,
+                        "content": msg,
+                    })
+                    
+                    # Stage to COMB for persistence
+                    from .memory.comb import stage
+                    await stage(f"Snapshot captured: {snapshot['id']} — {health}/{total} healthy, {ports_healthy}/{ports_total} ports")
+                    
+                except Exception as exc:
+                    logger.warning("Enterprise snapshot capture failed: %s", exc)
+            
+            logger.info("  Enterprise snapshot automation registered (every 4h)")
+        except Exception as exc:
+            logger.warning("Failed to register enterprise snapshot: %s", exc)
+    
     async def _boot_poa_monitoring(self) -> None:
         """Register all active POAs as PULSE scheduler jobs."""
         from .poa.manager import POAManager

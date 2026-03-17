@@ -2179,7 +2179,7 @@ class Runtime:
                                 from .nerve.types import OutboundMessage
                                 msg = (
                                     f"🚨 **[{severity}] ExfilGuard Security Alert**\n"
-                                    f"<@193011943382974466> <@1478409279777013862>\n"
+                                    f"<@193011943382974466>\n"
                                     f"**Type:** {payload.get('type', '?')}\n"
                                     f"**IP:** {payload.get('ip', '?')}\n"
                                     f"**rDNS:** {payload.get('rdns', '?')}\n"
@@ -2290,7 +2290,7 @@ class Runtime:
                                             # Build concise dispatch message
                                             verdict_msg = (
                                                 f"🛡️ **CISO Security Report** — ExfilGuard {severity}\n"
-                                                f"<@193011943382974466> <@1478409279777013862>\n"
+                                                f"<@193011943382974466>\n"
                                                 f"**IP:** {payload.get('ip', '?')} | **rDNS:** {payload.get('rdns', '?')}\n"
                                                 f"**Process:** {payload.get('process', '?')}\n\n"
                                                 f"{ciso_response[:1800]}"

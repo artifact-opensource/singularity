@@ -379,7 +379,7 @@ class Runtime:
     async def _boot_voice(self) -> None:
         """Initialize LLM provider chain.
         
-        Chain order: Copilot proxy (primary) → Ollama Cloud (fallback) → Local Ollama (last resort)
+        Chain order: Local Ollama (primary) → Copilot proxy (fallback, if enabled)
         """
         from .voice.chain import ProviderChain
         from .voice.proxy import CopilotProxyProvider
@@ -389,14 +389,25 @@ class Runtime:
         vc = self.config.voice
         providers = []
         
-        # Copilot proxy (primary — GitHub Copilot API, frontier models)
-        proxy = CopilotProxyProvider(
-            endpoint=vc.proxy.base_url,
-            model=vc.primary_model,
-        )
-        providers.append(proxy)
+        # Local Ollama (primary — fast on-device models)
+        if vc.ollama.enabled:
+            ollama = OllamaProvider(
+                endpoint=vc.ollama.base_url,
+                model=vc.ollama.models[0] if vc.ollama.models else "qwen3:4b",
+            )
+            providers.append(ollama)
+            logger.info(f"  VOICE: Local Ollama primary (model: {ollama.model})")
         
-        # Ollama Cloud (fallback — hosted open-weight heavyweights)
+        # Copilot proxy (fallback — only if explicitly enabled in config)
+        proxy_config = getattr(vc, 'proxy', None)
+        if proxy_config and getattr(proxy_config, 'enabled', True):
+            proxy = CopilotProxyProvider(
+                endpoint=vc.proxy.base_url,
+                model=vc.primary_model,
+            )
+            providers.append(proxy)
+        
+        # Ollama Cloud (last resort — only if explicitly enabled)
         oc_config = getattr(vc, 'ollama_cloud', None)
         if oc_config and getattr(oc_config, 'enabled', False):
             oc_api_key = getattr(oc_config, 'api_key', '') or os.environ.get("OLLAMA_CLOUD_API_KEY", "")
@@ -407,15 +418,6 @@ class Runtime:
                     base_url=getattr(oc_config, 'base_url', None) or "https://ollama.com/v1",
                 )
                 providers.append(oc)
-                logger.info(f"  VOICE: Ollama Cloud provider added (model: {oc.model})")
-        
-        # Local Ollama (last resort — on-device models)
-        if vc.ollama.enabled:
-            ollama = OllamaProvider(
-                endpoint=vc.ollama.base_url,
-                model=vc.ollama.models[0] if vc.ollama.models else "qwen3.5:0.8b",
-            )
-            providers.append(ollama)
         
         self.voice = ProviderChain(providers)
         logger.info(f"  VOICE ready ({len(providers)} providers in chain)")

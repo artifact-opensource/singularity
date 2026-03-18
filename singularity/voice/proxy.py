@@ -57,7 +57,7 @@ class CopilotProxyProvider(ChatProvider):
     Proxy mode is preferred when running alongside Mach6 on the same machine.
     """
     
-    def __init__(self, model: str = "claude-sonnet-4", endpoint: str = None, **kwargs):
+    def __init__(self, model: str = "claude-opus-4.6-fast", endpoint: str = None, **kwargs):
         super().__init__(name="copilot-proxy", model=model, **kwargs)
         self._cached_token: Optional[dict] = None  # {token, expires_at, updated_at}
         self._session: Optional[aiohttp.ClientSession] = None

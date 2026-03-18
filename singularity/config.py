@@ -66,7 +66,7 @@ class OllamaCloudConfig(BaseModel):
 
 class VoiceConfig(BaseModel):
     """LLM provider configuration."""
-    primary_model: str = "claude-sonnet-4"
+    primary_model: str = "claude-opus-4.6"
     fallback_models: list[str] = Field(default_factory=lambda: ["gemini-2.0-flash", "gpt-4.1-mini"])
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
     ollama_cloud: OllamaCloudConfig = Field(default_factory=OllamaCloudConfig)

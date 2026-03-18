@@ -653,10 +653,10 @@ class ToolExecutor:
             
             if t.response:
                 # Cap at 1800 chars to stay under Discord's 2000 limit
-                response_text = t.response[:1800]
+                parts = [t.response[:1800]]
                 if len(t.response) > 1800:
-                    response_text += "\n... (truncated)"
-                msg_lines.append(response_text)
+                    parts.append("\n... (truncated)")
+                msg_lines.append("".join(parts))
             
             if t.error:
                 msg_lines.append(f"\n⚠️ **Error:** {t.error[:300]}")

@@ -102,3 +102,8 @@ config/workspace-sa-key.json
 # Build artifacts
 *.bak
 *.tsbuildinfo
+-e 
+# Local workspace files (not for open source)
+WORKSPACE.md
+USER.md
+.core/install.json

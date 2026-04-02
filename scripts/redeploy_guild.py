@@ -119,7 +119,7 @@ async def redeploy(guild_id: int, token: str):
             private=True,
             sg_dir=SINGULARITY_ROOT / ".singularity",
             authorized_user_ids=[
-                "193011943382974466",    # Ali
+                "OWNER_DISCORD_ID",    # Ali
                 "1478396689642688634",   # AVA bot
             ],
         )

@@ -7,7 +7,7 @@
   },
   "auth": {
     "dev_account": {
-      "email": "ali.shakil@live.com",
+      "email": "admin@example.com",
       "password": "sirius",
       "name": "Ali Shakil",
       "role": "admin"

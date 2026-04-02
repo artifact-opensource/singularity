@@ -87,10 +87,10 @@ async function main() {
   });
 
   await prisma.user.upsert({
-    where: { email: 'ali.shakil@live.com' },
+    where: { email: 'admin@example.com' },
     update: { password: await bcrypt.hash(devPw, 12) },
     create: {
-      email: 'ali.shakil@live.com',
+      email: 'admin@example.com',
       password: await bcrypt.hash(devPw, 12),
       firstName: 'Ali',
       lastName: 'Shakil',

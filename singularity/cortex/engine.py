@@ -309,11 +309,11 @@ class CortexEngine:
                         from dataclasses import replace
                         agent_config = replace(
                             agent_config,
-                            max_iterations=3,
+                            max_iterations=6,
                             expansion_threshold=99,  # Disable auto-expand
                         )
                         logger.info(
-                            f"Conversational fast-path: capping to 3 iterations "
+                            f"Conversational fast-path: capping to 6 iterations "
                             f"for message ({msg_len} chars): {msg_text[:50]!r}"
                         )
 

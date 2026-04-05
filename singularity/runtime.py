@@ -203,8 +203,11 @@ class Runtime:
         await self._boot_atlas()
 
         # Phase 9: Health + Immune
-        logger.info("[9/12] Initializing health monitoring (IMMUNE)...")
-        await self._boot_immune()
+        if self.config.immune.enabled:
+            logger.info("[9/12] Initializing health monitoring (IMMUNE)...")
+            await self._boot_immune()
+        else:
+            logger.info("[9/12] IMMUNE system DISABLED by config — skipping")
         
         # Phase 10: Channel routing (NERVE router)
         logger.info("[10/12] Initializing message routing (NERVE)...")
@@ -789,9 +792,10 @@ class Runtime:
                 except Exception as e:
                     logger.error(f"Failed to forward NEXUS report to Discord: {e}")
 
-            self.bus.subscribe("nexus.daemon.cycle.done", on_nexus_cycle_done)
+            # NOTE: Discord alerts disabled per operator request (2026-04-02).
+            # self.bus.subscribe("nexus.daemon.cycle.done", on_nexus_cycle_done)
 
-            logger.info("  NEXUS evolution daemon started (6h cycle, reports → #governance)")
+            logger.info("  NEXUS evolution daemon started (6h cycle, reports silenced)")
         except Exception as e:
             logger.warning(f"  NEXUS daemon failed to start: {e}")
             self._nexus_daemon = None
@@ -969,7 +973,8 @@ class Runtime:
         # Register default health checks
         self._register_health_checks()
         
-        await self.health.start(check_interval=self.config.immune.check_interval)
+        if self.config.immune.enabled:
+            await self.health.start(check_interval=self.config.immune.check_interval)
         logger.info("  PULSE ready (scheduler + health monitor)")
 
     async def _boot_creem_tracker(self) -> None:
@@ -1992,7 +1997,8 @@ class Runtime:
             asyncio.create_task(self._poll_dispatch_inbox())
         
         # Start ExfilGuard event relay watcher
-        asyncio.create_task(self._poll_exfilguard_events())
+        if self.config.immune.enabled:
+            asyncio.create_task(self._poll_exfilguard_events())
         
         # Wait for shutdown signal
         await self._shutdown_event.wait()

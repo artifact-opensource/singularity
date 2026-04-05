@@ -133,6 +133,7 @@ class BlinkConfig(BaseModel):
 
 class ImmuneConfig(BaseModel):
     """IMMUNE health system configuration."""
+    enabled: bool = True
     check_interval: float = 30.0
     max_restart_attempts: int = 5
     restart_window: int = 300

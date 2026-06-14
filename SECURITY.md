@@ -35,7 +35,7 @@ All mutation operations (executive spawns, POA deployments, production actions) 
 ### LLM Provider Security
 - No credentials transmitted to LLM providers beyond API authentication
 - Provider chain operates with circuit breakers to prevent cascade failures
-- Local/sovereign mode available via Ollama (zero external dependencies)
+- Local/qorvex mode available via Ollama (zero external dependencies)
 
 ## Supported Versions
 

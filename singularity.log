@@ -1,0 +1,37 @@
+/home/adam/workspace/singularity/.venv/bin/python3: No module named singularity.main
+/home/adam/workspace/singularity/.venv/bin/python3: can't open file '/home/adam/workspace/singularity/main.py': [Errno 2] No such file or directory
+16:43:34 [singularity.config] WARNING: PyYAML not installed, trying JSON fallback
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/adam/workspace/singularity/singularity/__main__.py", line 1292, in <module>
+    main()
+    ~~~~^^
+  File "/home/adam/workspace/singularity/singularity/__main__.py", line 1264, in main
+    asyncio.run(run())
+    ~~~~~~~~~~~^^^^^^^
+  File "/usr/lib/python3.13/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/usr/lib/python3.13/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/usr/lib/python3.13/asyncio/base_events.py", line 725, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/home/adam/workspace/singularity/singularity/__main__.py", line 1259, in run
+    runtime = Runtime(config_path=config_path)
+  File "/home/adam/workspace/singularity/singularity/runtime.py", line 99, in __init__
+    self.config = load_config(config_path)
+                  ~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/home/adam/workspace/singularity/singularity/config.py", line 248, in load_config
+    data = json.loads(raw)
+  File "/usr/lib/python3.13/json/__init__.py", line 352, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "/usr/lib/python3.13/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/json/decoder.py", line 363, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)

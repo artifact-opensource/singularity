@@ -212,7 +212,7 @@ Primary: HuggingFace (router.huggingface.co — OpenAI-compatible, 120+ models)
     ↓ (3 failures → circuit open)
 Fallback: GitHub Copilot Proxy (localhost)
     ↓ (3 failures → circuit open)
-Local: Ollama (sovereign mode — zero external deps)
+Local: Ollama (qorvex mode — zero external deps)
     ↓ (all fail)
 Degraded mode: structured error response
 ```
@@ -841,7 +841,7 @@ singularity/
 │   ├── voice/
 │   │   ├── chain.py            # Provider cascade + circuit breakers
 │   │   ├── huggingface.py      # HuggingFace Inference API (primary — router.huggingface.co)
-│   │   ├── ollama.py           # Local Ollama (sovereign mode)
+│   │   ├── ollama.py           # Local Ollama (qorvex mode)
 │   │   ├── provider.py         # Abstract provider + ChatMessage types
 │   │   └── proxy.py            # GitHub Copilot proxy
 │   │

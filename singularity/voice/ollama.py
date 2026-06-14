@@ -5,7 +5,7 @@ VOICE — Ollama Local Provider
 Local LLM fallback via Ollama (localhost:11434).
 
 When the cloud is unreachable — missiles overhead, internet down,
-API quotas exhausted — Ollama is the sovereign option.
+API quotas exhausted — Ollama is the qorvex option.
 Smaller models, but fully autonomous.
 """
 

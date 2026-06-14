@@ -391,27 +391,61 @@ class Runtime:
         
         vc = self.config.voice
         providers = []
-        
-        # Local Ollama (primary — fast on-device models)
-        if vc.ollama.enabled:
-            ollama = OllamaProvider(
-                endpoint=vc.ollama.base_url,
-                model=vc.ollama.models[0] if vc.ollama.models else "qwen3:4b",
-            )
-            providers.append(ollama)
-            logger.info(f"  VOICE: Local Ollama primary (model: {ollama.model})")
-        
-        # Copilot proxy (fallback — only if explicitly enabled in config)
         proxy_config = getattr(vc, 'proxy', None)
-        if proxy_config and getattr(proxy_config, 'enabled', True):
-            proxy = CopilotProxyProvider(
-                endpoint=vc.proxy.base_url,
-                model=vc.primary_model,
-            )
-            providers.append(proxy)
-        
-        # Ollama Cloud (last resort — only if explicitly enabled)
         oc_config = getattr(vc, 'ollama_cloud', None)
+        primary_provider = getattr(vc, 'primary_provider', '') or 'copilot'
+        primary_provider = primary_provider.lower().replace('_', '-').strip()
+
+        def add_ollama_primary():
+            if vc.ollama.enabled:
+                ollama = OllamaProvider(
+                    endpoint=vc.ollama.base_url,
+                    model=vc.ollama.models[0] if vc.ollama.models else "qwen3:4b",
+                )
+                providers.append(ollama)
+                logger.info(f"  VOICE: Local Ollama provider (model: {ollama.model})")
+
+        def add_copilot_primary():
+            if proxy_config and getattr(proxy_config, 'enabled', True):
+                proxy = CopilotProxyProvider(
+                    endpoint=vc.proxy.base_url,
+                    model=vc.primary_model,
+                )
+                providers.append(proxy)
+                logger.info(f"  VOICE: GitHub Copilot proxy provider (model: {proxy.model})")
+
+        def add_ollama_cloud_primary():
+            if oc_config and getattr(oc_config, 'enabled', False):
+                oc_api_key = getattr(oc_config, 'api_key', '') or os.environ.get("OLLAMA_CLOUD_API_KEY", "")
+                if oc_api_key:
+                    oc = OllamaCloudProvider(
+                        api_key=oc_api_key,
+                        model=getattr(oc_config, 'model', None) or "deepseek-v3.2",
+                        base_url=getattr(oc_config, 'base_url', None) or "https://ollama.com/v1",
+                    )
+                    providers.append(oc)
+                    logger.info(f"  VOICE: Ollama Cloud provider (model: {oc.model})")
+
+        if primary_provider in ("github-copilot", "copilot"):
+            add_copilot_primary()
+            add_ollama_primary()
+            add_ollama_cloud_primary()
+        elif primary_provider in ("ollama", "local-ollama"):
+            add_ollama_primary()
+            add_copilot_primary()
+            add_ollama_cloud_primary()
+        elif primary_provider in ("ollama-cloud", "ollama_cloud", "cloud"):
+            add_ollama_cloud_primary()
+            add_copilot_primary()
+            add_ollama_primary()
+        else:
+            logger.info(f"  VOICE: unknown primary_provider '{primary_provider}', falling back to default chain")
+            add_ollama_primary()
+            add_copilot_primary()
+            add_ollama_cloud_primary()
+
+        self.voice = ProviderChain(providers)
+        logger.info(f"  VOICE ready ({len(providers)} providers in chain)")
         if oc_config and getattr(oc_config, 'enabled', False):
             oc_api_key = getattr(oc_config, 'api_key', '') or os.environ.get("OLLAMA_CLOUD_API_KEY", "")
             if oc_api_key:

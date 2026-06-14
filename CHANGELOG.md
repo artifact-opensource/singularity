@@ -35,7 +35,7 @@ The first release of Singularity, the Autonomous Enterprise Runtime.
 #### LLM Providers (VOICE)
 - **Provider Chain** — automatic cascade through multiple providers with circuit breakers
 - **GitHub Copilot Proxy** — SSE streaming, token exchange, OpenAI-compatible
-- **Ollama Provider** — local/sovereign mode, no API keys required
+- **Ollama Provider** — local/qorvex mode, no API keys required
 - **Circuit Breakers** — per-provider failure tracking, automatic cooldown, event emission
 
 #### Tool Execution (SINEW)

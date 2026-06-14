@@ -162,7 +162,7 @@ Runs all core services:
 - HEKTOR daemon
 - Ollama (:11434)
 
-### Secondary (Victus — 192.168.1.8)
+### Secondary (Victus — 192.168.1.15)
 
 GPU compute node:
 - Win11 + WSL2 Ubuntu 24.04

@@ -614,7 +614,7 @@ _ROLE_DEFAULTS: dict[str, dict] = {
             "security", "vulnerability", "audit", "penetration", "access",
             "encryption", "threat", "risk", "compliance", "incident",
             "firewall", "authentication", "authorization", "SSL",
-            "certificate", "credential", "breach", "sovereign", "privacy",
+            "certificate", "credential", "breach", "qorvex", "privacy",
         ],
         "audit_checks": [
             "failed_logins", "listening_ports", "file_permissions",

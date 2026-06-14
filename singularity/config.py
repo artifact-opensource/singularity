@@ -67,6 +67,7 @@ class OllamaCloudConfig(BaseModel):
 class VoiceConfig(BaseModel):
     """LLM provider configuration."""
     primary_model: str = "claude-opus-4.6"
+    primary_provider: str = "copilot"
     fallback_models: list[str] = Field(default_factory=lambda: ["gemini-2.0-flash", "gpt-4.1-mini"])
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
     ollama_cloud: OllamaCloudConfig = Field(default_factory=OllamaCloudConfig)
@@ -224,6 +225,7 @@ class SingularityConfig(BaseModel):
 # ── Config Loading ──────────────────────────────────────────────────
 
 def load_config(path: Path | str | None = None) -> SingularityConfig:
+    print(f"!!! LOADING CONFIG FROM: {path} !!!")
     """Load configuration from YAML or JSON file.
     
     Falls back to defaults if file doesn't exist.
@@ -239,14 +241,10 @@ def load_config(path: Path | str | None = None) -> SingularityConfig:
         raw = config_path.read_text(encoding="utf-8")
         
         if config_path.suffix in (".yaml", ".yml"):
-            try:
-                import yaml
-                data = yaml.safe_load(raw) or {}
-            except ImportError:
-                logger.warning("PyYAML not installed, trying JSON fallback")
-                data = json.loads(raw)
+            import yaml
+            data = yaml.safe_load(raw) or {}
         else:
-            data = json.loads(raw)
+            print("!!! FORCED YAML !!!"); data = yaml.safe_load(raw)
         
         logger.info("Config loaded from %s", config_path)
     else:

@@ -42,7 +42,7 @@ journalctl --user -u singularity -f      # Follow logs
 
 ---
 
-## Victus — GPU Forge (192.168.1.8)
+## Victus — GPU Forge (192.168.1.15)
 
 Secondary machine for GPU-accelerated workloads.
 

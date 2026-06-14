@@ -57,7 +57,7 @@ function loadServices(): MonitoredService[] {
   return [
     { id: '1', name: 'Singularity API', url: '/api/health', expectedStatus: 200, type: 'internal', description: 'Backend API server' },
     { id: '2', name: 'COMB Cloud', url: 'https://comb-cloud.artifactvirtual.com/health', expectedStatus: 200, type: 'external', description: 'Cloud memory service' },
-    { id: '3', name: 'Gladius', url: 'https://gladius.artifactvirtual.com', expectedStatus: 200, type: 'external', description: 'Frontend application' },
+    { id: '3', name: 'Qorvex', url: 'https://gladius.artifactvirtual.com', expectedStatus: 200, type: 'external', description: 'Frontend application' },
     { id: '4', name: 'Mach6 Gateway', url: 'https://mach6.artifactvirtual.com', expectedStatus: 200, type: 'external', description: 'API gateway' },
   ];
 }
@@ -517,7 +517,7 @@ function ServersPage() {
           <Server className="h-8 w-8 text-primary" />
           <div>
             <h3 className="font-semibold text-foreground">Production Server</h3>
-            <p className="text-sm text-muted-foreground">Hosts Singularity ERP, COMB Cloud, Mach6 Gateway, Gladius</p>
+            <p className="text-sm text-muted-foreground">Hosts Singularity ERP, COMB Cloud, Mach6 Gateway, Qorvex</p>
           </div>
           <CheckCircle className="h-5 w-5 text-green-600 ml-auto" />
         </div>

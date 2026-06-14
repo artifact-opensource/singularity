@@ -330,7 +330,7 @@ export const useDeploymentStore = createLocalCrudStore<Deployment>('singularity-
   },
   {
     id: 'dep-4',
-    name: 'Gladius Frontend',
+    name: 'Qorvex Frontend',
     environment: 'production',
     status: 'active',
     version: '3.1.0',
@@ -624,8 +624,8 @@ export interface Server {
 export const useServerStore = createLocalCrudStore<Server>('singularity-servers', [
   {
     id: 'srv-1',
-    name: 'sovereign',
-    hostname: 'sovereign.local',
+    name: 'qorvex',
+    hostname: 'qorvex.local',
     ip: '192.168.1.100',
     type: 'physical',
     status: 'online',

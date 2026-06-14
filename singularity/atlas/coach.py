@@ -39,8 +39,8 @@ THRESHOLDS = {
     "ram_crit_pct": 90,
     "swap_warn_pct": 70,
     "swap_crit_pct": 90,
-    "disk_warn_pct": 80,
-    "disk_crit_pct": 90,
+    "disk_warn_pct": 85,
+    "disk_crit_pct": 95,
     "module_ram_warn_mb": 500,     # Flag services using >500MB
     "module_ram_crit_mb": 2000,    # Critical at >2GB
     "agent_ram_warn_mb": 1000,     # Agents get higher threshold

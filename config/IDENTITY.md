@@ -61,7 +61,7 @@
 | Ollama | :11434 | ✅ systemd |
 | Cthulu Daemon | :9002 | ✅ systemd |
 
-### Victus (GPU Forge — 192.168.1.8)
+### Victus (GPU Forge — 192.168.1.15)
 - Win11 + WSL2 Ubuntu 24.04 | RTX 2050 4GB VRAM | 1TB NVMe
 - MT5 bridge, GLADIUS training, GPU compute
 - SSH: `victus` (Win) / `victus-wsl` (WSL2)

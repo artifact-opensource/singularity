@@ -1,0 +1,20 @@
+{
+  "ledgers": [
+    {
+      "lid": "ledger_singularity_erp_20261005",
+      "name": "singularity_erp",
+      "created": "2026-10-05T18:30:09.542710",
+      "source": "/home/adam/workspace/singularity/erp"
+    }
+  ],
+  "entries": [
+    {
+      "ledger": "{\"points\": 21}",
+      "type": 0.0,
+      "amount": "Autonomous ledger created for Singularity ERP",
+      "desc": "{\"points\": 21}",
+      "time": "2026-10-05 13:30:09"
+    }
+  ],
+  "generated_at": "2026-10-05T18:30:09.564988"
+}

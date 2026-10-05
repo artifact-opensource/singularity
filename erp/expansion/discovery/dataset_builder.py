@@ -8,8 +8,8 @@ import json, sqlite3, os
 from pathlib import Path
 from typing import List, Dict
 
-DB_PATH = "/home/adam/workspace/singularity/erp/expansion/discovery/company_dataset.db"
-MAP_PATH = "/home/adam/workspace/singularity/erp/expansion/discovery/semantic_map.json"
+DB_PATH = "company_dataset.db"
+MAP_PATH = "semantic_map.json"
 
 class DatasetBuilder:
     def __init__(self, db_path=DB_PATH, map_path=MAP_PATH):
@@ -44,7 +44,7 @@ class DatasetBuilder:
         with open(self.map_path, "w") as f:
             json.dump(semantic_map, f, indent=2)
 
-    def build_ledger_from_project(self, project_path="/home/adam/workspace/enterprise/artifact-project.json"):
+    def build_ledger_from_project(self, project_path="../../../workspace/enterprise/artifact-project.json"):
         try:
             proj = json.load(open(project_path))
             org = proj.get("organization", {})

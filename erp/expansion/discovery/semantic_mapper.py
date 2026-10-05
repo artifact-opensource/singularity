@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import List, Dict, Optional
 
 TARGET_PATHS = [
-    "/home/adam/workspace/singularity/erp",
-    "/home/adam/workspace/enterprise",
-    "/home/adam/workspace/enterprise/divisions",
+    "../../../../singularity/erp",
+    "../../../workspace/enterprise",
+    "../../../workspace/enterprise/divisions",
 ]
 
 class SemanticMapper:
@@ -64,7 +64,7 @@ class SemanticMapper:
         points = []
         # From artifact-project.json
         try:
-            proj = json.load(open("/home/adam/workspace/enterprise/artifact-project.json"))
+            proj = json.load(open("../../../workspace/enterprise/artifact-project.json"))
             org = proj.get("organization", {})
             points.append({"source": "artifact-project", "entity": "company", "type": "org", "data": org})
             for dept, info in proj.get("departments", {}).items():
@@ -72,7 +72,7 @@ class SemanticMapper:
         except Exception as e:
             points.append({"source": "discovery", "error": str(e)})
         # From enterprise divisions
-        csv_files = list(Path("/home/adam/workspace/enterprise/divisions").rglob("*.csv"))
+        csv_files = list(Path("../../../workspace/enterprise/divisions").rglob("*.csv"))
         for div_path in csv_files[:10]:
             try:
                 with open(div_path) as f:

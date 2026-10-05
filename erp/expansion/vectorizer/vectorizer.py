@@ -27,7 +27,7 @@ class VectorizerWorker:
             "chunk_size_tokens": 512,
             "overlap_tokens": 64,
             "embedding_model": {"provider": "ollama", "model_name": "nomic-embed-text", "dim": 768},
-            "ingest_paths": ["/home/adam/workspace/singularity/erp", "/home/adam/workspace/enterprise"],
+            "ingest_paths": ["../../singularity/erp", "../../workspace/enterprise"],
             "collection": "singularity_twin_v1"
         }
 

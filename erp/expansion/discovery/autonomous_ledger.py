@@ -8,7 +8,7 @@ import sqlite3, json, os
 from pathlib import Path
 from datetime import datetime
 
-LEDGER_DB = "/home/adam/workspace/singularity/erp/expansion/discovery/autonomous_ledger.db"
+LEDGER_DB = "autonomous_ledger.db"
 
 class AutonomousLedger:
     def __init__(self, db_path=LEDGER_DB):
@@ -45,7 +45,7 @@ class AutonomousLedger:
 
     def consolidate(self):
         """Consolidate all ledgers into a unified dataset file."""
-        output_path = "/home/adam/workspace/singularity/erp/expansion/discovery/consolidated_dataset.json"
+        output_path = "consolidated_dataset.json"
         c = self.conn.cursor()
         c.execute("SELECT * FROM ledgers")
         ledgers = [{"lid": r[0], "name": r[1], "created": r[2], "source": r[3]} for r in c.fetchall()]

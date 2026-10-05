@@ -6,16 +6,16 @@ saves company dataset, creates autonomous DB and ledgers.
 """
 
 import sys, json
-sys.path.insert(0, "/home/adam/workspace/singularity/erp/expansion/discovery")
+sys.path.insert(0, ".")
 
 from semantic_mapper import SemanticMapper
 from dataset_builder import DatasetBuilder
 from autonomous_ledger import AutonomousLedger
 
 TARGETS = [
-    "/home/adam/workspace/singularity/erp",
-    "/home/adam/workspace/enterprise",
-    "/home/adam/workspace/enterprise/divisions",
+    "../../../../singularity/erp",
+    "../../../workspace/enterprise",
+    "../../../workspace/enterprise/divisions",
 ]
 
 def main():
@@ -36,7 +36,7 @@ def main():
     dataset.save_semantic_map(semantic_map)
     # Load departments from artifact-project
     try:
-        proj = __import__("json").load(open("/home/adam/workspace/enterprise/artifact-project.json"))
+        proj = __import__("json").load(open("../../../workspace/enterprise/artifact-project.json"))
         dataset.save_departments(proj.get("departments", {}))
         dataset.build_ledger_from_project()
     except Exception:
@@ -46,7 +46,7 @@ def main():
 
     # Autonomous ledger
     ledger = AutonomousLedger()
-    ledger_id = ledger.create_ledger("singularity_erp", source_path="/home/adam/workspace/singularity/erp")
+    ledger_id = ledger.create_ledger("singularity_erp", source_path="../../../../singularity/erp")
     ledger.save_company_state("digital_twin_version", "v0.7.1")
     ledger.save_company_state("twin_points_count", str(len(twin_points)))
     ledger.record(ledger_id, "init", 0.0, "Autonomous ledger created for Singularity ERP", {"points": len(twin_points)})
@@ -64,7 +64,7 @@ def main():
         "consolidated_path": consolidated_path,
         "status": "discovered_configured_autonomous"
     }
-    with open("/home/adam/workspace/singularity/erp/expansion/discovery/self_discovery_result.json", "w") as f:
+    with open("self_discovery_result.json"), "w") as f:
         json.dump(final_output, f, indent=2)
     print("=== SELF DISCOVERY COMPLETE ===")
     return final_output

@@ -64,7 +64,7 @@ def main():
         "consolidated_path": consolidated_path,
         "status": "discovered_configured_autonomous"
     }
-    with open("self_discovery_result.json"), "w") as f:
+    with open("self_discovery_result.json", "w") as f:
         json.dump(final_output, f, indent=2)
     print("=== SELF DISCOVERY COMPLETE ===")
     return final_output

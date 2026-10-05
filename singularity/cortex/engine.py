@@ -25,7 +25,7 @@ import os
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from .agent import AgentLoop, AgentConfig, TurnResult
+from .agent import CortexEngine, AgentConfig, TurnResult
 from .blink import BlinkController, BlinkConfig, BlinkPhase
 from .context import ContextAssembler, build_system_prompt, extract_archive_summary
 from ..voice.provider import ChatMessage

@@ -255,7 +255,7 @@ class DiscordAdapter(BaseAdapter):
 
         boot_msg = (
             f"{owner_mention}⚡ **Singularity Online.**\n\n"
-            "Brutalist mandate loaded. Cognitive rails active. "
+            "Singularity online. Cognitive rails active. "
             "Source of truth — operational.\n\n"
             "No margin for BS. Ready to work."
         )

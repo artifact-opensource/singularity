@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field
+from dotenv import load_dotenv
 
 logger = logging.getLogger("singularity.config")
 
@@ -64,12 +65,21 @@ class OllamaCloudConfig(BaseModel):
     timeout: float = 120.0
 
 
+class OpenRouterConfig(BaseModel):
+    """OpenRouter API configuration."""
+    enabled: bool = False
+    api_key: str = ""  # Falls back to OPENROUTER_API_KEY env var
+    base_url: str = "https://openrouter.ai/api/v1"
+    timeout: float = 120.0
+
+
 class VoiceConfig(BaseModel):
     """LLM provider configuration."""
     primary_model: str = "claude-opus-4.6"
     primary_provider: str = "copilot"
     fallback_models: list[str] = Field(default_factory=lambda: ["gemini-2.0-flash", "gpt-4.1-mini"])
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
+    openrouter: OpenRouterConfig = Field(default_factory=OpenRouterConfig)
     ollama_cloud: OllamaCloudConfig = Field(default_factory=OllamaCloudConfig)
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
     temperature: float = 0.5
@@ -233,6 +243,7 @@ def load_config(path: Path | str | None = None) -> SingularityConfig:
         SINGULARITY_DISCORD_TOKEN → discord.token
         SINGULARITY_LOG_LEVEL → log_level
     """
+    load_dotenv()
     config_path = Path(path) if path else DEFAULT_CONFIG_FILE
     
     data: dict[str, Any] = {}
@@ -262,6 +273,18 @@ def load_config(path: Path | str | None = None) -> SingularityConfig:
         if value:
             _set_nested(data, path_parts, value)
             logger.debug("Override from env: %s", env_key)
+    
+    # Additional overrides for providers
+    provider_overrides = {
+        "OPENROUTER_API_KEY": ("voice", "openrouter", "api_key"),
+        "OLLAMA_CLOUD_API_KEY": ("voice", "ollama_cloud", "api_key"),
+    }
+    
+    for env_key, path_parts in provider_overrides.items():
+        value = os.environ.get(env_key)
+        if value:
+            _set_nested(data, path_parts, value)
+            logger.debug("Provider override from env: %s", env_key)
     
     return SingularityConfig(**data)
 

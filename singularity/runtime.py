@@ -388,6 +388,7 @@ class Runtime:
         from .voice.proxy import CopilotProxyProvider
         from .voice.ollama_cloud import OllamaCloudProvider
         from .voice.ollama import OllamaProvider
+        from .voice.openrouter import OpenRouterProvider
         
         vc = self.config.voice
         providers = []
@@ -426,6 +427,18 @@ class Runtime:
                     providers.append(oc)
                     logger.info(f"  VOICE: Ollama Cloud provider (model: {oc.model})")
 
+        def add_openrouter_primary():
+            if hasattr(vc, 'openrouter') and vc.openrouter.enabled:
+                or_api_key = getattr(vc.openrouter, 'api_key', '') or os.environ.get("OPENROUTER_API_KEY", "")
+                if or_api_key:
+                    or_prov = OpenRouterProvider(
+                        api_key=or_api_key,
+                        model=vc.primary_model,
+                        base_url=getattr(vc.openrouter, 'base_url', "https://openrouter.ai/api/v1"),
+                    )
+                    providers.append(or_prov)
+                    logger.info(f"  VOICE: OpenRouter provider (model: {or_prov.model})")
+
         if primary_provider in ("github-copilot", "copilot"):
             add_copilot_primary()
             add_ollama_primary()
@@ -438,6 +451,11 @@ class Runtime:
             add_ollama_cloud_primary()
             add_copilot_primary()
             add_ollama_primary()
+        elif primary_provider in ("openrouter", "open-router"):
+            add_openrouter_primary()
+            add_copilot_primary()
+            add_ollama_primary()
+            add_ollama_cloud_primary()
         else:
             logger.info(f"  VOICE: unknown primary_provider '{primary_provider}', falling back to default chain")
             add_ollama_primary()
@@ -882,7 +900,7 @@ class Runtime:
                     report = self.atlas.get_board_report()
 
                     if self.tools and self.tools._discord_adapter:
-                        from .nerve.types import OutboundMessage
+                        from .nerge.types import OutboundMessage
                         await self.tools._discord_adapter.send(
                             ATLAS_CHANNEL, OutboundMessage(content=report)
                         )
@@ -908,7 +926,7 @@ class Runtime:
                         mod = issue.get("module", "?")
                         lines.append(f"[{sev}] {title} ({mod})")
 
-                    from .nerve.types import OutboundMessage
+                    from .nerge.types import OutboundMessage
                     msg = "\n".join(lines)
                     if len(msg) > 1900:
                         msg = msg[:1900] + "\n... (truncated)"
@@ -964,7 +982,7 @@ class Runtime:
                     mod_type = data.get("type", "?")
                     machine = data.get("machine", "?")
 
-                    from .nerve.types import OutboundMessage
+                    from .nerge.types import OutboundMessage
                     await self.tools._discord_adapter.send(
                         ATLAS_CHANNEL,
                         OutboundMessage(content=f"**ATLAS: New module discovered** — `{mod_id}` ({mod_type}) on {machine}")
@@ -1339,7 +1357,7 @@ class Runtime:
 
                 # Send to #dispatch channel for visibility
                 if self.tools and self.tools._discord_adapter:
-                    from .nerve.types import OutboundMessage
+                    from .nerge.types import OutboundMessage
                     dispatch_channel = "1478716096667189292"
                     await self.tools._discord_adapter.send(
                         dispatch_channel, OutboundMessage(content=alert_msg)
@@ -1433,7 +1451,7 @@ class Runtime:
                             lines.append("\nUse `release_status` to review, `release_confirm <id>` to approve.")
                             
                             if self.tools and self.tools._discord_adapter:
-                                from .nerve.types import OutboundMessage
+                                from .nerge.types import OutboundMessage
                                 channel = "1328051692167762034"  # #service-access
                                 await self.tools._discord_adapter.send(
                                     channel, OutboundMessage(content="\n".join(lines))
@@ -1543,7 +1561,7 @@ class Runtime:
             logger.critical(f"[IMMUNE] ALL voice providers exhausted: {data}")
             try:
                 if hasattr(self, "tools") and self.tools and hasattr(self.tools, "_discord_adapter"):
-                    from .nerve.types import OutboundMessage
+                    from .nerge.types import OutboundMessage
                     await self.tools._discord_adapter.send(
                         dispatch_ch,
                         OutboundMessage(content=f"🔴 **VOICE EXHAUSTED** — All LLM providers down. {data}")
@@ -1559,7 +1577,7 @@ class Runtime:
                 logger.warning(f"[IMMUNE] POA {product} status: {status}")
                 try:
                     if hasattr(self, "tools") and self.tools and hasattr(self.tools, "_discord_adapter"):
-                        from .nerve.types import OutboundMessage
+                        from .nerge.types import OutboundMessage
                         emoji = "🔴" if status == "RED" else "🟡"
                         await self.tools._discord_adapter.send(
                             dispatch_ch,
@@ -1573,7 +1591,7 @@ class Runtime:
             logger.warning(f"[IMMUNE] Disk warning: {data}")
             try:
                 if hasattr(self, "tools") and self.tools and hasattr(self.tools, "_discord_adapter"):
-                    from .nerve.types import OutboundMessage
+                    from .nerge.types import OutboundMessage
                     await self.tools._discord_adapter.send(
                         dispatch_ch,
                         OutboundMessage(content=f"🟡 **DISK WARNING** — {data}")
@@ -1677,7 +1695,7 @@ class Runtime:
             return
         
         try:
-            from .nerve.http_api import HttpApiAdapter
+            from .nerge.http_api import HttpApiAdapter
             
             http_adapter = HttpApiAdapter(
                 port=8450,
@@ -1851,8 +1869,8 @@ class Runtime:
                         # Route to correct adapter by type
                         adapter = self.adapters.get(channel_type)
                         if adapter:
-                            from .nerve.types import OutboundMessage
-                            from .nerve.formatter import format_for_channel
+                            from .nerge.types import OutboundMessage
+                            from .nerge.formatter import format_for_channel
 
                             chunks = format_for_channel(
                                 response_text,
@@ -1901,7 +1919,7 @@ class Runtime:
             message = data.get("message", "")
             
             if chat_id and channel in self.adapters:
-                from .nerve.types import OutboundMessage
+                from .nerge.types import OutboundMessage
                 adapter = self.adapters[channel]
                 try:
                     await adapter.send(chat_id, OutboundMessage(content=f"🛡️ {message}"))
@@ -1970,7 +1988,7 @@ class Runtime:
             # SECONDARY: post summary to #bridge for visibility
             bridge_channel = "1478716092992979035"
             if "discord" in self.adapters:
-                from .nerve.types import OutboundMessage
+                from .nerge.types import OutboundMessage
                 try:
                     summary_lines = [f"📋 **C-Suite Dispatch {dispatch_id} Complete** — processing now"]
                     for t in tasks:
@@ -2000,7 +2018,7 @@ class Runtime:
             # Send alert to bridge channel
             alert_channels = self.config.immune.alert_channels
             if alert_channels and "discord" in self.adapters:
-                from .nerve.types import OutboundMessage
+                from .nerge.types import OutboundMessage
                 try:
                     await self.adapters["discord"].send(
                         alert_channels[0],
@@ -2193,7 +2211,7 @@ class Runtime:
                             message = event.get("message", "")
                             
                             if channel_id and message and self.adapters.get("discord"):
-                                from .nerve.types import OutboundMessage
+                                from .nerge.types import OutboundMessage
                                 adapter = self.adapters["discord"]
                                 await adapter.send(
                                     channel_id,
@@ -2218,7 +2236,7 @@ class Runtime:
                             
                             # Also forward CRITICAL/HIGH to Discord #dispatch (with dedup)
                             if severity in ("CRITICAL", "HIGH") and self.adapters.get("discord") and not _discord_deduped:
-                                from .nerve.types import OutboundMessage
+                                from .nerge.types import OutboundMessage
                                 msg = (
                                     f"🚨 **[{severity}] ExfilGuard Security Alert**\n"
                                     f"<@193011943382974466>\n"

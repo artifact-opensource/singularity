@@ -27,7 +27,8 @@ import json
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from enum import Enum, auto
+from typing import Any, Optional, Dict, List
 from os import urandom
 
 from ..voice.provider import ChatMessage, ChatResponse
@@ -37,7 +38,16 @@ from ..sinew.definitions import TOOL_DEFINITIONS
 from .blink import BlinkController
 from .context import compress_tool_results
 
-logger = logging.getLogger("singularity.cortex.agent")
+logger = logging.getLogger("singularity.cortex.engine")
+
+
+class LoopState(Enum):
+    THINK = auto()
+    ACT = auto()
+    OBSERVE = auto()
+    COMPRESS = auto()
+    COMPLETE = auto()
+    ERROR = auto()
 
 
 @dataclass
@@ -46,11 +56,11 @@ class AgentConfig:
     persona_name: str = "singularity"
     system_prompt: str = ""
     max_iterations: int = 20
-    expanded_iterations: int = 100  # When PULSE auto-expands
-    expansion_threshold: int = 18   # Expand at this iteration count
-    temperature: float = 0.3        # Low temperature = grounded, precise responses
+    expanded_iterations: int = 100  
+    expansion_threshold: int = 18   
+    temperature: float = 0.3        
     max_tokens: int = 8192
-    parallel_tools: bool = True     # Execute tool calls in parallel
+    parallel_tools: bool = True     
 
 
 @dataclass
@@ -64,19 +74,14 @@ class TurnResult:
     provider: str = ""
     finish_reason: str = "stop"     # stop, budget_exceeded, error
     error: Optional[str] = None
-    tool_messages: list = None      # assistant tool_call + tool result messages to persist
+    tool_messages: list = None      
 
 
-class AgentLoop:
-    """The core think → act → observe loop.
+class CortexEngine:
+    """An asynchronous, state-driven agent execution engine.
     
-    One AgentLoop per conversation turn. Created fresh each time
-    a message comes in, runs until the LLM produces a final response
-    or the iteration budget is exhausted.
-    
-    If a BlinkController is attached, the loop will inject a preparation
-    message near the budget boundary instead of dying. The controller
-    tracks whether a blink is needed so the engine can spawn a fresh loop.
+    Decoupled from blocking loops, tracking state explicitly to allow for 
+    granular instrumentation, resilient recovery checkpoints, and safe data budgeting.
     """
     
     def __init__(
@@ -93,306 +98,209 @@ class AgentLoop:
         self.bus = bus
         self.blink = blink
         
-        self._iteration = 0
-        self._max_iterations = config.max_iterations
-        self._expanded = False
-        self._tool_calls_total = 0
-        self._total_tokens = 0
-        self._turn_id = urandom(4).hex()
-    
-    async def run(self, messages: list[ChatMessage]) -> TurnResult:
-        """Execute the agent loop.
+        self.iteration = 0
+        self.max_iterations = config.max_iterations
+        self.expanded = False
+        self.tool_calls_total = 0
+        self.total_tokens = 0
+        self.turn_id = urandom(4).hex()
         
-        Args:
-            messages: Full conversation history including system prompt
-                     and the new user message.
-        
-        Returns:
-            TurnResult with the final response and metadata.
-        """
+        self.current_state = LoopState.THINK
+        self.new_tool_messages: List[ChatMessage] = []
+
+    async def run(self, messages: List[ChatMessage]) -> TurnResult:
+        """Runs the event-driven state engine through the conversation execution pipeline."""
         t0 = time.perf_counter()
-        new_tool_messages: list[ChatMessage] = []  # tool call + result messages for persistence
         
-        try:
-            while self._iteration < self._max_iterations:
-                self._iteration += 1
-                remaining = self._max_iterations - self._iteration
-                
-                # ── PULSE: Auto-expand budget if near limit ──────
-                if (not self._expanded
-                    and self._iteration >= self.config.expansion_threshold):
-                    old_max = self._max_iterations
-                    self._max_iterations = self.config.expanded_iterations
-                    self._expanded = True
-                    logger.info(
-                        f"[{self._turn_id}] PULSE expanded budget to "
-                        f"{self._max_iterations} iterations"
-                    )
-                    if self.bus:
-                        await self.bus.emit_nowait("cortex.budget.expanded", {
-                            "turn_id": self._turn_id,
-                            "new_max": self._max_iterations,
-                        }, source="cortex")
-                    # Notify BLINK that the wall moved
-                    if self.blink:
-                        self.blink.notify_cap_expanded(old_max, self._max_iterations)
-                
-                # ── THINK: Send to LLM ───────────────────────────
-                
-                # ── Layer 2: Compress old tool results ───────────
-                if self._iteration > 1:
-                    compress_tool_results(messages, self._iteration)
-                
-                # ── BLINK: Inject preparation if approaching boundary ──
-                if self.blink:
-                    remaining_after = self._max_iterations - self._iteration
-                    if self.blink.should_prepare(remaining_after):
-                        prep_msg = self.blink.get_prepare_message()
-                        messages.append(ChatMessage(
-                            role="user",
-                            content=prep_msg,
-                        ))
-                        logger.info(
-                            f"[{self._turn_id}] BLINK prepare injected "
-                            f"({remaining_after} iterations remaining)"
-                        )
-                    elif self.blink.should_checkpoint(self._iteration):
-                        cp_msg = self.blink.get_checkpoint_message(self._iteration)
-                        messages.append(ChatMessage(
-                            role="user",
-                            content=cp_msg,
-                        ))
-                        logger.info(
-                            f"[{self._turn_id}] BLINK checkpoint at iteration "
-                            f"{self._iteration}/{self._max_iterations}"
-                        )
-                
-                if self.bus:
-                    await self.bus.emit_nowait("cortex.iteration.start", {
-                        "turn_id": self._turn_id,
-                        "iteration": self._iteration,
-                        "remaining": self._max_iterations - self._iteration,
-                        "messages": len(messages),
-                    }, source="cortex")
-                
-                # ── Hard cap: emergency truncation if context too large ──
-                # Prevents 400 errors from exceeding model's max prompt tokens.
-                # The outer context assembler budgets correctly, but tool call
-                # accumulation within the agent loop can blow past it.
-                MAX_PROMPT_CHARS = 350_000  # ~109K tokens at 3.2 chars/token (under 128K limit)
-                total_chars = sum(len(m.content or "") + sum(
-                    len(str(tc.get("function", tc).get("arguments", ""))) + 100
-                    for tc in (m.tool_calls or [])
-                ) for m in messages)
-                if total_chars > MAX_PROMPT_CHARS:
-                    # Aggressively truncate old tool results to fit
-                    for i in range(len(messages)):
-                        msg = messages[i]
-                        if msg.role == "tool" and msg.content and len(msg.content) > 200:
-                            messages[i] = ChatMessage(
-                                role=msg.role,
-                                content=f"[Truncated: {len(msg.content)} chars — context limit]",
-                                tool_call_id=msg.tool_call_id,
-                                name=msg.name,
-                            )
-                    # Recount after truncation
-                    total_chars_after = sum(len(m.content or "") for m in messages)
-                    logger.warning(
-                        f"[{self._turn_id}] Emergency context truncation: "
-                        f"{total_chars} → {total_chars_after} chars"
-                    )
-                
-                response = await self.voice.chat(
-                    messages,
-                    tools=TOOL_DEFINITIONS,
-                    temperature=self.config.temperature,
-                    max_tokens=self.config.max_tokens,
-                )
-                
-                self._total_tokens += response.total_tokens
-                
-                # Emit LLM response event (for presence: back to thinking)
-                if self.bus:
-                    await self.bus.emit_nowait("cortex.llm.response", {
-                        "turn_id": self._turn_id,
-                        "iteration": self._iteration,
-                        "has_tool_calls": response.has_tool_calls,
-                    }, source="cortex")
-                
-                logger.debug(
-                    f"[{self._turn_id}] Iteration {self._iteration}: "
-                    f"{response.finish_reason}, "
-                    f"{len(response.tool_calls)} tool calls, "
-                    f"{response.total_tokens} tokens"
-                )
-                
-                # ── No tool calls → final response ───────────────
-                if not response.has_tool_calls:
-                    latency = (time.perf_counter() - t0) * 1000
+        # Isolate historical data states to block cross-turn state pollution
+        local_history = list(messages)
+        active_error: Optional[str] = None
+        final_content: str = ""
+        provider_name: str = "unknown"
+        finish_reason: str = "stop"
+
+        while self.current_state != LoopState.COMPLETE:
+            try:
+                # ── State Machine Router ─────────────────────────────────────
+                if self.current_state == LoopState.THINK:
+                    final_content, provider_name, finish_reason = await self._handle_think(local_history)
                     
-                    if self.bus:
-                        await self.bus.emit_nowait("cortex.turn.complete", {
-                            "turn_id": self._turn_id,
-                            "iterations": self._iteration,
-                            "tool_calls": self._tool_calls_total,
-                            "tokens": self._total_tokens,
-                            "latency_ms": round(latency),
-                            "provider": response.provider_name,
-                        }, source="cortex")
+                elif self.current_state == LoopState.ACT:
+                    await self._handle_act(local_history)
                     
-                    return TurnResult(
-                        response=response.content,
-                        iterations=self._iteration,
-                        tool_calls_total=self._tool_calls_total,
-                        total_tokens=self._total_tokens,
-                        latency_ms=latency,
-                        provider=response.provider_name,
-                        finish_reason="stop",
-                        tool_messages=new_tool_messages,
-                    )
-                
-                # ── ACT: Execute tool calls ──────────────────────
-                # Add assistant message with tool calls to history
-                asst_tool_msg = ChatMessage(
-                    role="assistant",
-                    content=response.content or "",
-                    tool_calls=response.tool_calls,
-                )
-                messages.append(asst_tool_msg)
-                new_tool_messages.append(asst_tool_msg)
-                
-                # Execute tools (parallel or serial)
-                tool_results = await self._execute_tools(response.tool_calls)
-                self._tool_calls_total += len(response.tool_calls)
-                
-                # ── OBSERVE: Add tool results to history ─────────
-                for tc, result in zip(response.tool_calls, tool_results):
-                    tool_msg = ChatMessage(
-                        role="tool",
-                        content=result,
-                        tool_call_id=tc["id"],
-                        name=tc["function"]["name"],
-                    )
-                    messages.append(tool_msg)
-                    new_tool_messages.append(tool_msg)
-            
-            # Budget exhausted — but BLINK may save us
-            latency = (time.perf_counter() - t0) * 1000
-            logger.warning(
-                f"[{self._turn_id}] Budget exhausted at {self._iteration} iterations"
-            )
-            
-            if self.bus:
-                await self.bus.emit_nowait("cortex.budget.exhausted", {
-                    "turn_id": self._turn_id,
-                    "iterations": self._iteration,
-                    "tool_calls": self._tool_calls_total,
-                    "blink_eligible": self.blink is not None and self.blink.should_continue(),
-                }, source="cortex")
-            
-            # If blink controller exists, don't show the wall —
-            # return with budget_exceeded so the engine can blink
-            return TurnResult(
-                response="",  # No dead-wall message — blink handles it
-                iterations=self._iteration,
-                tool_calls_total=self._tool_calls_total,
-                total_tokens=self._total_tokens,
-                latency_ms=latency,
-                provider=self.voice.active.name if self.voice.active else "unknown",
-                finish_reason="budget_exceeded",
-                tool_messages=new_tool_messages,
-            )
-            
-        except Exception as e:
-            latency = (time.perf_counter() - t0) * 1000
-            logger.error(f"[{self._turn_id}] Agent loop error: {e}", exc_info=True)
-            
-            if self.bus:
-                await self.bus.emit_nowait("cortex.turn.error", {
-                    "turn_id": self._turn_id,
-                    "error": str(e),
-                    "iteration": self._iteration,
-                }, source="cortex")
-            
-            return TurnResult(
-                response="",
-                iterations=self._iteration,
-                tool_calls_total=self._tool_calls_total,
-                total_tokens=self._total_tokens,
-                latency_ms=latency,
-                finish_reason="error",
-                error=str(e),
-            )
-    
-    async def _execute_tools(self, tool_calls: list[dict]) -> list[str]:
-        """Execute tool calls, optionally in parallel.
+                elif self.current_state == LoopState.COMPRESS:
+                    await self._handle_compress(local_history)
+                    
+                elif self.current_state == LoopState.ERROR:
+                    raise RuntimeError(active_error or "Unknown failure encountered in cortex processing.")
+
+            except Exception as ex:
+                logger.error(f"[{self.turn_id}] Engine transition crash in state {self.current_state.name}: {ex}", exc_info=True)
+                active_error = str(ex)
+                finish_reason = "error"
+                self.current_state = LoopState.COMPLETE
+
+        latency = (time.perf_counter() - t0) * 1000
         
-        Each tool call: {id, type, function: {name, arguments}}
-        Returns list of result strings in same order.
-        """
-        if not tool_calls:
-            return []
+        if self.bus:
+            event_name = "cortex.turn.complete" if finish_reason == "stop" else "cortex.turn.error"
+            await self.bus.emit_nowait(event_name, {
+                "turn_id": self.turn_id,
+                "iterations": self.iteration,
+                "latency_ms": round(latency),
+                "error": active_error
+            }, source="cortex")
+
+        return TurnResult(
+            response=final_content,
+            iterations=self.iteration,
+            tool_calls_total=self.tool_calls_total,
+            total_tokens=self.total_tokens,
+            latency_ms=latency,
+            provider=provider_name,
+            finish_reason=finish_reason,
+            error=active_error,
+            tool_messages=self.new_tool_messages
+        )
+
+    async def _handle_think(self, history: List[ChatMessage]) -> tuple[str, str, str]:
+        """Manages the iteration tracking bounds and processes predictions via the LLM matrix."""
+        self.iteration += 1
+        if self.iteration > self.max_iterations:
+            logger.warning(f"[{self.turn_id}] Maximum processing budget exhausted.")
+            return "", "unknown", "budget_exceeded"
+
+        # ── PULSE Check ──────────────────────────────────────────────────────
+        if not self.expanded and self.iteration >= self.config.expansion_threshold:
+            old_max = self.max_iterations
+            self.max_iterations = self.config.expanded_iterations
+            self.expanded = True
+            if self.bus:
+                await self.bus.emit_nowait("cortex.budget.expanded", {"turn_id": self.turn_id, "new_max": self.max_iterations}, source="cortex")
+            if self.blink:
+                self.blink.notify_cap_expanded(old_max, self.max_iterations)
+
+        # ── BLINK Integrations ───────────────────────────────────────────────
+        if self.blink:
+            remaining = self.max_iterations - self.iteration
+            if self.blink.should_prepare(remaining):
+                history.append(ChatMessage(role="user", content=self.blink.get_prepare_message()))
+            elif self.blink.should_checkpoint(self.iteration):
+                history.append(ChatMessage(role="user", content=self.blink.get_checkpoint_message(self.iteration)))
+
+        if self.bus:
+            await self.bus.emit_nowait("cortex.iteration.start", {"turn_id": self.turn_id, "iteration": self.iteration}, source="cortex")
+
+        # Route down into context reduction before invoking prediction blocks
+        self.current_state = LoopState.COMPRESS
+        return "", "unknown", "stop"
+
+    async def _handle_compress(self, history: List[ChatMessage]) -> tuple[str, str, str]:
+        """Performs precise look-ahead checks and structures massive contexts safely."""
+        if self.iteration > 1:
+            compress_tool_results(history, self.iteration)
+
+        # Token safety evaluation block
+        MAX_PROMPT_CHARS = 350_000
+        current_weight = sum(len(m.content or "") for m in history)
         
-        if self.config.parallel_tools and len(tool_calls) > 1:
-            return await self._execute_parallel(tool_calls)
+        if current_weight > MAX_PROMPT_CHARS:
+            logger.warning(f"[{self.turn_id}] Running dynamic schema compression window.")
+            for idx, msg in enumerate(history):
+                if msg.role == "tool" and msg.content and len(msg.content) > 1000:
+                    history[idx] = self._truncate_safely(msg)
+
+        # Fire LLM request directly
+        response = await self.voice.chat(
+            history,
+            tools=TOOL_DEFINITIONS,
+            temperature=self.config.temperature,
+            max_tokens=self.config.max_tokens
+        )
+        
+        self.total_tokens += response.total_tokens
+
+        if not response.has_tool_calls:
+            self.current_state = LoopState.COMPLETE
+            return response.content or "", response.provider_name, "stop"
+
+        # Cache the current execution target intent
+        self._active_calls = response.tool_calls
+        asst_msg = ChatMessage(role="assistant", content=response.content or "", tool_calls=response.tool_calls)
+        history.append(asst_msg)
+        self.new_tool_messages.append(asst_msg)
+
+        self.current_state = LoopState.ACT
+        return "", response.provider_name, "stop"
+
+    async def _handle_act(self, history: List[ChatMessage]):
+        """Dispatches tasks down across decoupled parallel processing jobs securely."""
+        calls = getattr(self, "_active_calls", [])
+        if not calls:
+            self.current_state = LoopState.THINK
+            return
+
+        if self.config.parallel_tools and len(calls) > 1:
+            tasks = [self._execute_single_call(tc) for tc in calls]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
         else:
-            return await self._execute_serial(tool_calls)
-    
-    async def _execute_serial(self, tool_calls: list[dict]) -> list[str]:
-        """Execute tool calls one at a time."""
-        results = []
-        for tc in tool_calls:
-            result = await self._execute_single(tc)
-            results.append(result)
-        return results
-    
-    async def _execute_parallel(self, tool_calls: list[dict]) -> list[str]:
-        """Execute tool calls in parallel."""
-        tasks = [self._execute_single(tc) for tc in tool_calls]
-        return await asyncio.gather(*tasks)
-    
-    async def _execute_single(self, tool_call: dict) -> str:
-        """Execute a single tool call."""
+            results = [await self._execute_single_call(tc) for tc in calls]
+
+        # Standardize feedback channels back into the sequence history state
+        for tc, output in zip(calls, results):
+            if isinstance(output, Exception):
+                output_str = f"Execution system engine fault: {str(output)}"
+            else:
+                output_str = output
+
+            tool_msg = ChatMessage(role="tool", content=output_str, tool_call_id=tc["id"], name=tc["function"]["name"])
+            history.append(tool_msg)
+            self.new_tool_messages.append(tool_msg)
+            self.tool_calls_total += 1
+
+        self._active_calls = []
+        self.current_state = LoopState.THINK
+
+    async def _execute_single_call(self, tool_call: dict) -> str:
+        """Executes a standalone transaction unit inside the isolated SINEW manager system."""
         fn = tool_call.get("function", {})
         name = fn.get("name", "")
-        
-        # Parse arguments — fast path for common cases
-        args_raw = fn.get("arguments")
-        if not args_raw or (isinstance(args_raw, str) and not args_raw.strip()):
-            arguments = {}
-        elif isinstance(args_raw, dict):
-            arguments = args_raw
-        else:
+        args_raw = fn.get("arguments", {})
+
+        if isinstance(args_raw, str):
             try:
-                arguments = json.loads(args_raw)
+                args = json.loads(args_raw) if args_raw.strip() else {}
             except json.JSONDecodeError:
-                return f"Error: invalid JSON arguments: {args_raw[:200]}"
-        
-        # Emit tool execution event
+                return f"Fault: Context structure validation failed on json arguments parameter: {args_raw[:100]}"
+        else:
+            args = args_raw
+
         if self.bus:
-            await self.bus.emit_nowait("cortex.tool.executing", {
-                "turn_id": self._turn_id,
-                "tool": name,
-                "iteration": self._iteration,
-            }, source="cortex")
-        
-        # Log tool call with args summary
-        if logger.isEnabledFor(logging.INFO):
-            args_summary = str(arguments)[:120]
-            logger.info(f"[{self._turn_id}] Tool call: {name}({args_summary})")
-        
-        # Execute via SINEW
-        result = await self.tools.execute(name, arguments)
-        
-        if logger.isEnabledFor(logging.INFO):
-            logger.info(f"[{self._turn_id}] Tool {name}: {len(result)} chars output")
-        
-        # Emit tool done event
+            await self.bus.emit_nowait("cortex.tool.executing", {"turn_id": self.turn_id, "tool": name}, source="cortex")
+
+        try:
+            res = await self.tools.execute(name, args)
+        except Exception as tool_fault:
+            logger.error(f"[{self.turn_id}] Tool target system exception thrown on execution payload: {tool_fault}")
+            res = f"Execution exception generated during core task routing logic: {str(tool_fault)}"
+
         if self.bus:
-            await self.bus.emit_nowait("cortex.tool.done", {
-                "turn_id": self._turn_id,
-                "tool": name,
-                "iteration": self._iteration,
-            }, source="cortex")
-        
-        return result
+            await self.bus.emit_nowait("cortex.tool.done", {"turn_id": self.turn_id, "tool": name}, source="cortex")
+        return res
+
+    def _truncate_safely(self, target: ChatMessage) -> ChatMessage:
+        """Converts runaway text blocks into valid structural segments without breaking syntax schemas."""
+        raw_data = target.content or ""
+        try:
+            # Check if it's structural JSON data
+            parsed = json.loads(raw_data)
+            if isinstance(parsed, dict):
+                # Retain structural root keys to prevent hallucination vectors
+                summarized = {k: (v if len(str(v)) < 200 else f"[Truncated Attribute Data: {len(str(v))} chars]") for k, v in parsed.items()}
+                content = json.dumps(summarized)
+            else:
+                content = raw_data[:800] + "\n... [Context safety slice executed] ..."
+        except Exception:
+            content = raw_data[:800] + "\n... [Context safety slice executed] ..."
+
+        return ChatMessage(role=target.role, content=content, tool_call_id=target.tool_call_id, name=target.name)

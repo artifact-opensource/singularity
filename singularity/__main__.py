@@ -12,6 +12,9 @@ import asyncio
 import sys
 import logging
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from .bus import EventBus, Priority
 
 
